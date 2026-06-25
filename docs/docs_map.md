@@ -4680,6 +4680,7 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H3: Provider-only (SenseAudio)
   - H3: Echo transcript to chat (opt-in)
   - H2: Notes and limits
+  - H3: Resident local STT
   - H3: Proxy environment support
   - H2: Mention detection in groups
   - H2: Gotchas
@@ -9413,6 +9414,7 @@ Do not edit it by hand; run `pnpm docs:map:gen`.
   - H2: Config
   - H2: Grounding requirement
   - H2: Tool parameters
+  - H2: Base URL overrides
   - H2: Related
 
 ## tools/llm-task.md
