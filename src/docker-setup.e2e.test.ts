@@ -1163,6 +1163,22 @@ describe("scripts/docker/setup.sh", () => {
     ).toHaveLength(2);
   });
 
+  it("honors OPENCLAW_GATEWAY_CONTROL_UI_ALLOWED_ORIGINS env var override", async () => {
+    const activeSandbox = requireSandbox(sandbox);
+    await resetDockerLog(activeSandbox);
+
+    const customOrigins = '["https://openclaw.example.com","https://my-tailnet-host.ts.net"]';
+    const result = runDockerSetup(activeSandbox, {
+      OPENCLAW_GATEWAY_CONTROL_UI_ALLOWED_ORIGINS: customOrigins,
+    });
+
+    expect(result.status).toBe(0);
+    const log = await readDockerLog(activeSandbox);
+    expect(log).toContain(`{"path":"gateway.controlUi.allowedOrigins","value":${customOrigins}}`);
+    expect(result.stdout).toContain("Set gateway.controlUi.allowedOrigins to");
+    expect(result.stdout).toContain(customOrigins);
+  });
+
   it("Dockerfile ARG OPENCLAW_IMAGE_APT_PACKAGES must not have a default value", async () => {
     // If the ARG has a default (e.g. ARG OPENCLAW_IMAGE_APT_PACKAGES=""), Docker treats it as
     // "set" even when no --build-arg is passed. That breaks the RUN fallback expression

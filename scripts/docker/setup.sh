@@ -144,7 +144,9 @@ sync_gateway_config() {
   local current_allowed_origins=""
   local batch_json=""
 
-  if [[ "${OPENCLAW_GATEWAY_BIND}" != "loopback" ]]; then
+  if [[ -n "${OPENCLAW_GATEWAY_CONTROL_UI_ALLOWED_ORIGINS:-}" ]]; then
+    allowed_origin_json="$OPENCLAW_GATEWAY_CONTROL_UI_ALLOWED_ORIGINS"
+  elif [[ "${OPENCLAW_GATEWAY_BIND}" != "loopback" ]]; then
     allowed_origin_json="$(printf '["http://localhost:%s","http://127.0.0.1:%s"]' "$OPENCLAW_GATEWAY_PORT" "$OPENCLAW_GATEWAY_PORT")"
     current_allowed_origins="$(
       run_prestart_cli config get gateway.controlUi.allowedOrigins 2>/dev/null || true
