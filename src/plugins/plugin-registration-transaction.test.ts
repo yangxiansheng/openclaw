@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerPluginSessionSchedulerJob } from "./host-hook-runtime.js";
+import { listPluginSessionSchedulerJobs } from "./host-hook-runtime.test-fixtures.js";
 import { clearActivatedPluginRuntimeState } from "./loader-shared.js";
 import {
   getMemoryCapabilityRegistration,
@@ -11,6 +13,7 @@ import {
   snapshotPluginProcessGlobalState,
 } from "./plugin-registration-transaction.js";
 import { createEmptyPluginRegistry } from "./registry-empty.js";
+import { createPluginRegistry } from "./registry.js";
 import {
   getSessionDiscussionProvider,
   registerSessionDiscussionProvider,
@@ -112,5 +115,63 @@ describe("plugin registration transaction", () => {
     transaction.rollback();
 
     expect(getSessionDiscussionProvider()).toBe(activeProvider);
+  });
+
+  it("rolls back session scheduler jobs during plugin registration rollback", async () => {
+    const cleanup = vi.fn();
+    const registry = createPluginRegistry({
+      logger: { info() {}, warn() {}, error() {}, debug() {} },
+      runtime: {} as import("./runtime/types.js").PluginRuntime,
+    });
+    const transaction = createPluginRegistrationTransaction({
+      registry: registry.registry,
+      rollbackGlobalSideEffects: () => registry.rollbackPluginGlobalSideEffects("scheduler-plugin"),
+    });
+
+    registry.registry.sessionSchedulerJobs.push({
+      pluginId: "scheduler-plugin",
+      pluginName: "Scheduler Plugin",
+      job: {
+        id: "test-job",
+        sessionKey: "agent:main:main",
+        kind: "monitor",
+        cleanup,
+      },
+      source: "scheduler-plugin",
+      rootDir: "/tmp",
+    });
+
+    registerPluginSessionSchedulerJob({
+      pluginId: "scheduler-plugin",
+      pluginName: "Scheduler Plugin",
+      job: {
+        id: "test-job",
+        sessionKey: "agent:main:main",
+        kind: "monitor",
+        cleanup,
+      },
+    });
+
+    expect(listPluginSessionSchedulerJobs("scheduler-plugin")).toEqual([
+      {
+        id: "test-job",
+        pluginId: "scheduler-plugin",
+        sessionKey: "agent:main:main",
+        kind: "monitor",
+      },
+    ]);
+
+    transaction.rollback();
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(listPluginSessionSchedulerJobs("scheduler-plugin")).toStrictEqual([]);
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(cleanup).toHaveBeenCalledWith({
+      reason: "disable",
+      sessionKey: "agent:main:main",
+      jobId: "test-job",
+    });
   });
 });
