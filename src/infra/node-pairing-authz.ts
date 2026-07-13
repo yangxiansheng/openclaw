@@ -1,5 +1,9 @@
 // Maps node pairing command declarations to required operator scopes.
-import { NODE_BROWSER_PROXY_COMMAND, NODE_SYSTEM_RUN_COMMANDS } from "./node-commands.js";
+import {
+  NODE_BROWSER_PROXY_COMMAND,
+  NODE_FS_LIST_DIR_COMMAND,
+  NODE_SYSTEM_RUN_COMMANDS,
+} from "./node-commands.js";
 
 /** Operator scopes required to approve a pending node pairing surface. */
 export type NodeApprovalScope = "operator.pairing" | "operator.write" | "operator.admin";
@@ -8,7 +12,11 @@ const OPERATOR_PAIRING_SCOPE: NodeApprovalScope = "operator.pairing";
 const OPERATOR_WRITE_SCOPE: NodeApprovalScope = "operator.write";
 const OPERATOR_ADMIN_SCOPE: NodeApprovalScope = "operator.admin";
 
-const ADMIN_APPROVAL_COMMANDS = [...NODE_SYSTEM_RUN_COMMANDS, NODE_BROWSER_PROXY_COMMAND];
+const ADMIN_APPROVAL_COMMANDS = [
+  ...NODE_SYSTEM_RUN_COMMANDS,
+  NODE_BROWSER_PROXY_COMMAND,
+  NODE_FS_LIST_DIR_COMMAND,
+];
 
 /** Map declared node commands to the least operator scopes needed for approval. */
 export function resolveNodePairApprovalScopes(commands: unknown): NodeApprovalScope[] {

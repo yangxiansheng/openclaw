@@ -17,6 +17,13 @@ describe("resolveNodePairApprovalScopes", () => {
     ]);
   });
 
+  it("requires operator.admin for fs.listDir commands", () => {
+    expect(resolveNodePairApprovalScopes(["fs.listDir"])).toEqual([
+      "operator.pairing",
+      "operator.admin",
+    ]);
+  });
+
   it("requires operator.write for non-exec commands", () => {
     expect(resolveNodePairApprovalScopes(["canvas.present"])).toEqual([
       "operator.pairing",
