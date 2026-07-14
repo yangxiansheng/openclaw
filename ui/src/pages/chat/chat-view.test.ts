@@ -6077,5 +6077,71 @@ describe("right-click Reply", () => {
     // Without onSetReply, the handler returns early and no menu is created
     expect(document.querySelector(".chat-reply-context-menu")).toBeNull();
   });
+
+  it("preserves the native context menu when text is selected inside the bubble", () => {
+    const container = renderChatView({ onSetReply: vi.fn() });
+    const section = container.querySelector<HTMLElement>(".card.chat");
+    expect(section).not.toBeNull();
+
+    const group = document.createElement("div");
+    group.className = "chat-group";
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble";
+    bubble.dataset.messageId = "msg-1";
+    bubble.dataset.messageText = "selectable text";
+    bubble.textContent = "selectable text";
+    group.appendChild(bubble);
+    section!.querySelector(".chat-thread-inner")!.appendChild(group);
+
+    // Simulate a non-collapsed text selection inside the same bubble
+    const range = document.createRange();
+    range.selectNodeContents(bubble);
+    const mockSelection = {
+      isCollapsed: false,
+      rangeCount: 1,
+      getRangeAt: () => range,
+      toString: () => "selectable text",
+    } as unknown as Selection;
+    const getSelectionSpy = vi.spyOn(window, "getSelection").mockReturnValue(mockSelection);
+
+    const evt = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    bubble.dispatchEvent(evt);
+
+    // The handler should NOT prevent the native menu
+    expect(evt.defaultPrevented).toBe(false);
+    expect(document.querySelector(".chat-reply-context-menu")).toBeNull();
+
+    getSelectionSpy.mockRestore();
+  });
+
+  it("shows the Reply menu when clicking without a text selection", () => {
+    const container = renderChatView({ onSetReply: vi.fn() });
+    const section = container.querySelector<HTMLElement>(".card.chat");
+    expect(section).not.toBeNull();
+
+    const group = document.createElement("div");
+    group.className = "chat-group";
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble";
+    bubble.dataset.messageId = "msg-1";
+    bubble.dataset.messageText = "some text";
+    group.appendChild(bubble);
+    section!.querySelector(".chat-thread-inner")!.appendChild(group);
+
+    // No selection: getSelection returns collapsed or null
+    const mockSelection = {
+      isCollapsed: true,
+      rangeCount: 0,
+    } as unknown as Selection;
+    const getSelectionSpy = vi.spyOn(window, "getSelection").mockReturnValue(mockSelection);
+
+    const evt = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    bubble.dispatchEvent(evt);
+
+    expect(evt.defaultPrevented).toBe(true);
+    expect(document.querySelector(".chat-reply-context-menu")).not.toBeNull();
+
+    getSelectionSpy.mockRestore();
+  });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
