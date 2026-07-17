@@ -1,6 +1,10 @@
 import type { EmbeddedRunAttemptParams } from "openclaw/plugin-sdk/agent-harness-runtime";
 import type { AssistantMessage } from "openclaw/plugin-sdk/llm";
 import {
+  isSafeFenceBreak,
+  parseFenceSpans,
+} from "../../../../packages/markdown-core/src/fences.js";
+import {
   createAssistantMessage as buildAssistantMessage,
   createAssistantMirrorMessage as buildAssistantMirrorMessage,
   type AssistantMessageOptions,
@@ -281,7 +285,14 @@ export class CodexAssistantProjection {
 
   collectAssistantTexts(): string[] {
     const finalText = this.resolveFinalAssistantTextItem()?.text;
-    return finalText ? [finalText] : [];
+    if (!finalText) {
+      return [];
+    }
+    // Split accumulated text at paragraph boundaries so each paragraph
+    // becomes a separate assistant-text entry, matching the OpenClaw
+    // runtime's multi-message delivery boundaries.
+    // Blank lines inside fenced code blocks are not paragraph breaks.
+    return splitByParagraphBreak(finalText);
   }
 
   finalizeAnswerCandidate(turn: { status?: string; items?: CodexThreadItem[] }): void {
@@ -507,4 +518,28 @@ export class CodexAssistantProjection {
   private isToolProgressEchoText(itemId: string, text: string): boolean {
     return this.rawPromotedAssistantItemIds.has(itemId) && this.matchesToolProgressEcho(text);
   }
+}
+
+function splitByParagraphBreak(text: string): string[] {
+  const spans = parseFenceSpans(text);
+  const re = /\n[\t ]*\n+/g;
+  const parts: string[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const idx = match.index;
+    if (!isSafeFenceBreak(spans, idx)) {
+      continue;
+    }
+    const part = text.slice(lastIndex, idx).trim();
+    if (part) {
+      parts.push(part);
+    }
+    lastIndex = idx + match[0].length;
+  }
+  const tail = text.slice(lastIndex).trim();
+  if (tail) {
+    parts.push(tail);
+  }
+  return parts;
 }

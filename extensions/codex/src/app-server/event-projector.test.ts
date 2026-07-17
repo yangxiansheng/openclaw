@@ -1745,7 +1745,8 @@ describe("CodexAppServerEventProjector", () => {
 
     const result = projector.buildResult(buildEmptyToolTelemetry());
 
-    expect(result.assistantTexts).toEqual([finalAnswer]);
+    const expectedParts = finalAnswer.split(/\n\s*\n+/).filter((p) => p.trim().length > 0);
+    expect(result.assistantTexts).toEqual(expectedParts);
     expect(result.lastAssistant).toBeDefined();
     expect(result.currentAttemptAssistant).toBeDefined();
   });
