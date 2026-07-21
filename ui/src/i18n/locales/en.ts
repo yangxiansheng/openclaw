@@ -3922,6 +3922,7 @@ export const en: TranslationMap = {
     },
     messages: {
       activity: "Activity",
+      copySelection: "Copy",
       forkFromHere: "Fork from here",
       hide: "Hide",
       hideConfirm: "Hide this message in this browser? The agent still sees it.",

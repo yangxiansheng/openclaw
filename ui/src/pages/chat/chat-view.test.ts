@@ -6078,7 +6078,9 @@ describe("right-click Reply", () => {
     expect(document.querySelector(".chat-reply-context-menu")).toBeNull();
   });
 
-  it("uses the native menu only when the selection intersects the clicked bubble", () => {
+  it("adds Copy for an intersecting selection without changing the unselected menu", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
     const container = renderChatView({ onSetReply: vi.fn() });
     const section = container.querySelector<HTMLElement>(".card.chat");
     expect(section).not.toBeNull();
@@ -6106,14 +6108,21 @@ describe("right-click Reply", () => {
       isCollapsed: false,
       rangeCount: 1,
       getRangeAt: () => selectedRange,
+      toString: () => "selectable",
     } as unknown as Selection;
     vi.spyOn(window, "getSelection").mockReturnValue(mockSelection);
 
     const selectedEvent = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
     bubble.dispatchEvent(selectedEvent);
 
-    expect(selectedEvent.defaultPrevented).toBe(false);
-    expect(document.querySelector(".chat-reply-context-menu")).toBeNull();
+    expect(selectedEvent.defaultPrevented).toBe(true);
+    expect(
+      [...document.querySelectorAll(".chat-reply-context-menu button")].map((button) =>
+        button.textContent?.trim(),
+      ),
+    ).toEqual(["Copy", "Reply"]);
+    document.querySelector<HTMLButtonElement>('[aria-label="Copy"]')!.click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith("selectable"));
 
     selectedRange = document.createRange();
     selectedRange.selectNodeContents(otherBubble);
@@ -6121,7 +6130,11 @@ describe("right-click Reply", () => {
     bubble.dispatchEvent(disjointEvent);
 
     expect(disjointEvent.defaultPrevented).toBe(true);
-    expect(document.querySelector(".chat-reply-context-menu")).not.toBeNull();
+    expect(
+      [...document.querySelectorAll(".chat-reply-context-menu button")].map((button) =>
+        button.textContent?.trim(),
+      ),
+    ).toEqual(["Reply"]);
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

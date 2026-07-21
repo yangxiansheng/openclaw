@@ -253,50 +253,49 @@ describeControlUiE2e("Control UI chat message actions", () => {
       await replyPreview.getByRole("button", { name: "Cancel reply" }).click();
 
       const menu = page.locator(".chat-reply-context-menu");
-      await bubble.evaluate((element) => {
+      const selectedText = "context menu";
+      await bubble.evaluate((element, text) => {
         const selection = window.getSelection();
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        let textNode: Text | null = null;
+        let start = -1;
+        while (walker.nextNode()) {
+          const candidate = walker.currentNode;
+          const candidateText = candidate.textContent ?? "";
+          const candidateStart = candidateText.indexOf(text);
+          if (candidate instanceof Text && candidateStart >= 0) {
+            textNode = candidate;
+            start = candidateStart;
+            break;
+          }
+        }
+        if (!textNode) {
+          throw new Error(`Could not find selectable text: ${text}`);
+        }
         const range = document.createRange();
-        range.selectNodeContents(element);
+        range.setStart(textNode, start);
+        range.setEnd(textNode, start + text.length);
         selection?.removeAllRanges();
         selection?.addRange(range);
-      });
-      await page.evaluate(() => {
-        document.addEventListener(
-          "contextmenu",
-          (event) => {
-            (window as Window & { __contextMenuDefaultPrevented?: boolean })[
-              "__contextMenuDefaultPrevented"
-            ] = event.defaultPrevented;
-          },
-          { once: true },
-        );
-      });
+      }, selectedText);
       await bubble.click({ button: "right" });
-      expect(
-        await page.evaluate(
-          () =>
-            (window as Window & { __contextMenuDefaultPrevented?: boolean })[
-              "__contextMenuDefaultPrevented"
-            ],
-        ),
-      ).toBe(false);
-      expect(await menu.count()).toBe(0);
-      await screenshot(page, "03-selected-text-native-menu.png");
-
-      await thinkingGroup.locator(".chat-bubble").evaluate((element) => {
-        const selection = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-      });
-      const disjointDefaultPrevented = await bubble.evaluate((element) => {
-        const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
-        element.dispatchEvent(event);
-        return event.defaultPrevented;
-      });
       await menu.waitFor({ state: "visible" });
-      expect(disjointDefaultPrevented).toBe(true);
+      expect(await menu.getByRole("menuitem").allTextContents()).toEqual([
+        "Copy",
+        "Reply",
+        "Hide message",
+        "Open in canvas",
+        "Copy as markdown",
+      ]);
+      await screenshot(page, "03-selected-text-context-menu.png");
+      await menu.getByRole("menuitem", { name: "Copy", exact: true }).click();
+      await expect
+        .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+        .toBe(selectedText);
+
+      await page.evaluate(() => window.getSelection()?.removeAllRanges());
+      await bubble.click({ button: "right" });
+      await menu.waitFor({ state: "visible" });
       expect(await menu.getByRole("menuitem").allTextContents()).toEqual([
         "Reply",
         "Hide message",
@@ -313,7 +312,6 @@ describeControlUiE2e("Control UI chat message actions", () => {
         .poll(() => page.evaluate(() => navigator.clipboard.readText()))
         .toBe(messageText);
 
-      await page.evaluate(() => window.getSelection()?.removeAllRanges());
       await bubble.click({ button: "right" });
       await page.getByRole("menuitem", { name: "Open in canvas" }).click();
       const markdownSidebar = page.locator(".sidebar-markdown");
