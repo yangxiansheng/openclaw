@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { registerPluginSessionSchedulerJob } from "./host-hook-runtime.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { clearPluginHostRuntimeState } from "./host-hook-runtime.js";
 import { listPluginSessionSchedulerJobs } from "./host-hook-runtime.test-fixtures.js";
 import { clearActivatedPluginRuntimeState } from "./loader-shared.js";
 import {
@@ -14,11 +15,13 @@ import {
 } from "./plugin-registration-transaction.js";
 import { createEmptyPluginRegistry } from "./registry-empty.js";
 import { createPluginRegistry } from "./registry.js";
+import type { PluginRuntime } from "./runtime/types.js";
 import {
   getSessionDiscussionProvider,
   registerSessionDiscussionProvider,
   type SessionDiscussionProvider,
 } from "./session-discussion-registry.js";
+import { createPluginRecord } from "./status.test-helpers.js";
 
 function discussionProvider(id: string): SessionDiscussionProvider {
   return {
@@ -26,6 +29,17 @@ function discussionProvider(id: string): SessionDiscussionProvider {
     info: vi.fn().mockResolvedValue({ state: "available" }),
     open: vi.fn().mockResolvedValue({ state: "open" }),
   };
+}
+
+function createSchedulerPlugin(pluginId: string) {
+  const pluginRegistry = createPluginRegistry({
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    runtime: {} as PluginRuntime,
+  });
+  const api = pluginRegistry.createApi(createPluginRecord({ id: pluginId }), {
+    config: {} as OpenClawConfig,
+  });
+  return { api, pluginRegistry };
 }
 
 describe("plugin registration transaction", () => {
@@ -36,6 +50,7 @@ describe("plugin registration transaction", () => {
   });
 
   afterEach(() => {
+    clearPluginHostRuntimeState();
     restorePluginProcessGlobalState(initialProcessGlobalState);
   });
 
@@ -117,61 +132,51 @@ describe("plugin registration transaction", () => {
     expect(getSessionDiscussionProvider()).toBe(activeProvider);
   });
 
-  it("rolls back session scheduler jobs during plugin registration rollback", async () => {
-    const cleanup = vi.fn();
-    const registry = createPluginRegistry({
-      logger: { info() {}, warn() {}, error() {}, debug() {} },
-      runtime: {} as import("./runtime/types.js").PluginRuntime,
+  it("rolls back only scheduler jobs owned by the failed registry", async () => {
+    const pluginId = "scheduler-plugin";
+    const failedCleanup = vi.fn();
+    const activeCleanup = vi.fn();
+    const active = createSchedulerPlugin(pluginId);
+    const failed = createSchedulerPlugin(pluginId);
+
+    active.api.registerSessionSchedulerJob({
+      id: "active-job",
+      sessionKey: "agent:main:main",
+      kind: "monitor",
+      cleanup: activeCleanup,
     });
     const transaction = createPluginRegistrationTransaction({
-      registry: registry.registry,
-      rollbackGlobalSideEffects: () => registry.rollbackPluginGlobalSideEffects("scheduler-plugin"),
+      registry: failed.pluginRegistry.registry,
+      rollbackGlobalSideEffects: () =>
+        failed.pluginRegistry.rollbackPluginGlobalSideEffects(pluginId),
+    });
+    failed.api.registerSessionSchedulerJob({
+      id: "failed-job",
+      sessionKey: "agent:main:main",
+      kind: "monitor",
+      cleanup: failedCleanup,
     });
 
-    registry.registry.sessionSchedulerJobs.push({
-      pluginId: "scheduler-plugin",
-      pluginName: "Scheduler Plugin",
-      job: {
-        id: "test-job",
-        sessionKey: "agent:main:main",
-        kind: "monitor",
-        cleanup,
-      },
-      source: "scheduler-plugin",
-      rootDir: "/tmp",
+    transaction.rollback();
+    await vi.waitFor(() => {
+      expect(failedCleanup).toHaveBeenCalledOnce();
     });
 
-    registerPluginSessionSchedulerJob({
-      pluginId: "scheduler-plugin",
-      pluginName: "Scheduler Plugin",
-      job: {
-        id: "test-job",
-        sessionKey: "agent:main:main",
-        kind: "monitor",
-        cleanup,
-      },
+    expect(failedCleanup).toHaveBeenCalledWith({
+      reason: "disable",
+      sessionKey: "agent:main:main",
+      jobId: "failed-job",
     });
-
-    expect(listPluginSessionSchedulerJobs("scheduler-plugin")).toEqual([
+    expect(activeCleanup).not.toHaveBeenCalled();
+    expect(listPluginSessionSchedulerJobs(pluginId)).toStrictEqual([
       {
-        id: "test-job",
-        pluginId: "scheduler-plugin",
+        id: "active-job",
+        pluginId,
         sessionKey: "agent:main:main",
         kind: "monitor",
       },
     ]);
-
-    transaction.rollback();
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
-
-    expect(listPluginSessionSchedulerJobs("scheduler-plugin")).toStrictEqual([]);
-    expect(cleanup).toHaveBeenCalledOnce();
-    expect(cleanup).toHaveBeenCalledWith({
-      reason: "disable",
-      sessionKey: "agent:main:main",
-      jobId: "test-job",
-    });
+    expect(failed.pluginRegistry.registry.sessionSchedulerJobs).toStrictEqual([]);
+    expect(active.pluginRegistry.registry.sessionSchedulerJobs).toHaveLength(1);
   });
 });

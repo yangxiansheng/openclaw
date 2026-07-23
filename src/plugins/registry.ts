@@ -58,6 +58,7 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
         pluginId,
         reason: "disable",
         records: schedulerRecords,
+        cleanupOwnerRegistry: state.registry,
       }).then((failures) => {
         for (const failure of failures) {
           state.pushDiagnostic({
