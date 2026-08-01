@@ -1,5 +1,6 @@
 // Handles native slash commands before full get-reply pipeline execution.
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { resolveContextTokensForModel } from "../../agents/context.js";
 import {
   resolveThinkingDefaultWithRuntimeCatalog,
   type ModelAliasIndex,
@@ -208,6 +209,17 @@ export async function maybeResolveNativeSlashCommandFastReply(params: {
     : undefined;
   const effectiveProvider = normalizedOverride?.provider ?? params.provider;
   const effectiveModel = normalizedOverride?.model ?? params.model;
+  const configuredEffectiveContextTokens = resolveContextTokensForModel({
+    cfg: params.cfg,
+    provider: effectiveProvider,
+    model: effectiveModel,
+    allowAsyncLoad: false,
+  });
+  // A stored override owns the active model budget. Falling back to the agent
+  // default here would re-clamp /compact to the configured default model.
+  const effectiveContextTokens = storedModelOverride
+    ? (configuredEffectiveContextTokens ?? sessionState.sessionEntry.contextTokens ?? 0)
+    : (params.agentCfg?.contextTokens ?? configuredEffectiveContextTokens ?? 0);
   const command = buildCommandContext({
     ctx: params.ctx,
     cfg: params.cfg,
@@ -316,7 +328,7 @@ export async function maybeResolveNativeSlashCommandFastReply(params: {
     resolveDefaultThinkingLevel: async () => undefined,
     provider: effectiveProvider,
     model: effectiveModel,
-    contextTokens: params.agentCfg?.contextTokens ?? 0,
+    contextTokens: effectiveContextTokens,
     isGroup: sessionState.isGroup,
     loadSkillCommands: loadNativeSkillCommands,
     typing: params.typing,

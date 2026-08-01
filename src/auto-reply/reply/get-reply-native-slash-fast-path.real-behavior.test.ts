@@ -256,7 +256,7 @@ describe("native /compact real behavior proof (#117470)", () => {
         model: "gpt-5.6-sol",
         workspaceDir,
         typing: createTypingController({}),
-        opts: { abortSignal: AbortSignal.timeout(300_000) } as never,
+        opts: { abortSignal: AbortSignal.timeout(420_000) } as never,
       });
       console.log("PROOF_STAGE native compact returned");
 

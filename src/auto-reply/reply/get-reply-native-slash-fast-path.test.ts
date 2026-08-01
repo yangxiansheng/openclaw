@@ -339,7 +339,7 @@ describe("maybeResolveNativeSlashCommandFastReply", () => {
       } as OpenClawConfig),
       agentId: "main",
       agentDir: "/tmp/agent",
-      agentCfg: undefined,
+      agentCfg: { contextTokens: 372_000 },
       commandAuthorized: true,
       defaultProvider: "openai",
       defaultModel: "gpt-5.5",
@@ -353,13 +353,14 @@ describe("maybeResolveNativeSlashCommandFastReply", () => {
     expect(result.handled).toBe(true);
     expect(handleCommandsMock).toHaveBeenCalledOnce();
     const call = handleCommandsMock.mock.calls[0]?.[0] as
-      | { provider?: string; model?: string }
+      | { provider?: string; model?: string; contextTokens?: number }
       | undefined;
     // A bound claude-cli session must be normalized to its canonical anthropic
     // provider so provider-keyed harness/context-budget policy is not missed,
     // matching canonical model selection's bound-CLI regression.
     expect(call?.provider).toBe("anthropic");
     expect(call?.model).toMatch(/claude-fable-5/);
+    expect(call?.contextTokens).toBe(1_000_000);
     expect(typing.cleanup).toHaveBeenCalledTimes(1);
   });
 
