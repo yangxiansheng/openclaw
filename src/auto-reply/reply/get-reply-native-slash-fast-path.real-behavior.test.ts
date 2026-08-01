@@ -122,7 +122,9 @@ describe("native /compact real behavior proof (#117470)", () => {
         mkdir(workspaceDir, { recursive: true }),
         mkdir(agentDir, { recursive: true }),
       ]);
+      console.log("PROOF_STAGE temporary state ready");
       const { baseUrl, requests } = await startProofModelServer();
+      console.log("PROOF_STAGE local model server ready");
       const sessionKey = "agent:main:main";
       const sessionId = "proof-session-117470";
       const storePath = path.join(stateDir, "openclaw.sqlite");
@@ -182,8 +184,10 @@ describe("native /compact real behavior proof (#117470)", () => {
           },
         },
       );
+      console.log("PROOF_STAGE persisted override ready");
 
       const manager = SessionManager.open(target, workspaceDir);
+      console.log("PROOF_STAGE transcript manager ready");
       const usage = buildUsageWithNoCost({
         input: 2,
         output: 1,
@@ -207,8 +211,10 @@ describe("native /compact real behavior proof (#117470)", () => {
           timestamp: turn * 2,
         });
       }
+      console.log("PROOF_STAGE persisted transcript ready");
       const beforeEvents = await loadTranscriptEvents(target);
       const beforeCompactions = beforeEvents.filter((event) => event.type === "compaction").length;
+      console.log("PROOF_STAGE invoking native compact");
 
       const result = await maybeResolveNativeSlashCommandFastReply({
         ctx: {
@@ -249,6 +255,7 @@ describe("native /compact real behavior proof (#117470)", () => {
         workspaceDir,
         typing: createTypingController({}),
       });
+      console.log("PROOF_STAGE native compact returned");
 
       const afterEvents = await loadTranscriptEvents(target);
       const compactionEvents = afterEvents.filter((event) => event.type === "compaction");
