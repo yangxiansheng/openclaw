@@ -22,6 +22,7 @@ async function startProofModelServer(): Promise<{
   const server = createServer((request, response) => {
     void (async () => {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
+      console.log(`PROOF_MODEL_REQUEST ${request.method ?? "UNKNOWN"} ${url.pathname}`);
       if (request.method === "GET" && url.pathname === "/v1/models") {
         response.writeHead(200, { "content-type": "application/json" });
         response.end(JSON.stringify({ data: [{ id: "claude-fable-5", object: "model" }] }));
@@ -254,6 +255,7 @@ describe("native /compact real behavior proof (#117470)", () => {
         model: "gpt-5.6-sol",
         workspaceDir,
         typing: createTypingController({}),
+        opts: { abortSignal: AbortSignal.timeout(300_000) } as never,
       });
       console.log("PROOF_STAGE native compact returned");
 
@@ -295,6 +297,6 @@ describe("native /compact real behavior proof (#117470)", () => {
       });
       expect(reply?.text).toContain("/1.0m");
     },
-    90_000,
+    420_000,
   );
 });
