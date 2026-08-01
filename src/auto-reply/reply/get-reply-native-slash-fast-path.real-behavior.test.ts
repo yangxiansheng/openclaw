@@ -3,16 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { SessionManager } from "../../agents/sessions/session-manager.js";
-import { buildUsageWithNoCost } from "../../agents/stream-message-shared.js";
-import {
-  loadSessionEntry,
-  loadTranscriptEvents,
-  replaceSessionEntry,
-} from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { maybeResolveNativeSlashCommandFastReply } from "./get-reply-native-slash-fast-path.js";
-import { createTypingController } from "./typing.js";
 
 type CapturedRequest = { model?: string };
 
@@ -109,6 +100,20 @@ describe("native /compact real behavior proof (#117470)", () => {
   it(
     "persists a real compaction boundary for a stored claude-cli override",
     async () => {
+      console.log("PROOF_STAGE importing session persistence");
+      const [{ SessionManager }, sessionAccessor] = await Promise.all([
+        import("../../agents/sessions/session-manager.js"),
+        import("../../config/sessions/session-accessor.js"),
+      ]);
+      const { loadSessionEntry, loadTranscriptEvents, replaceSessionEntry } = sessionAccessor;
+      console.log("PROOF_STAGE importing usage accounting");
+      const { buildUsageWithNoCost } = await import("../../agents/stream-message-shared.js");
+      console.log("PROOF_STAGE importing native slash path");
+      const { maybeResolveNativeSlashCommandFastReply } = await import(
+        "./get-reply-native-slash-fast-path.js"
+      );
+      const { createTypingController } = await import("./typing.js");
+      console.log("PROOF_STAGE imports complete");
       const stateDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-117470-proof-"));
       cleanupTasks.push(() => rm(stateDir, { recursive: true, force: true }));
       const workspaceDir = path.join(stateDir, "workspace");
