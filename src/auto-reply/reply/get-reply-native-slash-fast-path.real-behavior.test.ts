@@ -133,6 +133,7 @@ describe("native /compact real behavior proof (#117470)", () => {
       const cfg = {
         session: { store: storePath, scope: "per-sender" },
         commands: { text: true },
+        plugins: { enabled: false },
         agents: {
           defaults: {
             model: { primary: "openai/gpt-5.6-sol" },
