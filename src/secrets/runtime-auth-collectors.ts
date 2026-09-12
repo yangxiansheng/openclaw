@@ -1,9 +1,18 @@
 /** Collects auth-profile and OAuth secret refs for runtime preparation. */
+import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
-import { resolveAuthProfileEligibility } from "../agents/auth-profiles/order.js";
+import {
+  prependAuthProfilePin,
+  resolveAuthProfileEligibility,
+  resolveExplicitAuthOrderSelection,
+} from "../agents/auth-profiles/order.js";
 import { assertNoOAuthSecretRefPolicyViolations } from "../agents/auth-profiles/policy.js";
 import type { AuthProfileCredential, AuthProfileStore } from "../agents/auth-profiles/types.js";
-import type { ProviderAuthAliasLookupParams } from "../agents/provider-auth-aliases.js";
+import { resolveProviderEntryApiKeyProfileReference } from "../agents/model-auth-provider-config.js";
+import {
+  resolveProviderIdForAuth,
+  type ProviderAuthAliasLookupParams,
+} from "../agents/provider-auth-aliases.js";
 import { resolveSecretInputRef } from "../config/types.secrets.js";
 import { setSecretAssignmentSource } from "./runtime-assignment-provenance.js";
 import { resolveAuthProfileSecretOwnerId } from "./runtime-auth-profile-owner.js";
@@ -43,6 +52,11 @@ function collectAuthStoreSecretInputAssignment(
   }
 }
 
+type ProviderAuthOrderInfo = {
+  hasExplicitOrder: boolean;
+  profileIds: Set<string>;
+};
+
 function collectStaticProfileAssignment(params: {
   profile: StaticProfileCredential;
   profileId: string;
@@ -51,6 +65,7 @@ function collectStaticProfileAssignment(params: {
   defaults: SecretDefaults | undefined;
   authAliasLookupParams: ProviderAuthAliasLookupParams;
   context: ResolverContext;
+  providerAuthOrder: ProviderAuthOrderInfo;
 }): void {
   const ownerContract = resolveAuthProfileOwnerContract(params.profile, params.context);
   const profile = params.profile;
@@ -95,14 +110,39 @@ function collectStaticProfileAssignment(params: {
     provider: profile.provider,
     profileId: params.profileId,
   });
+  const configuredReference = resolveProviderEntryApiKeyProfileReference({
+    cfg: params.context.sourceConfig,
+    authAliasLookupParams: params.authAliasLookupParams,
+    provider: profile.provider,
+    store: params.store,
+  });
+  // A profile referenced by models.providers.<id>.apiKey is resolved by runtime
+  // binding ahead of auth.order fallback, so it stays effective even when excluded.
+  const isConfigBoundProfile =
+    configuredReference.kind === "profile" && configuredReference.profileId === params.profileId;
+  let active = eligibility.eligible;
+  let inactiveReason = `auth profile is not eligible (${eligibility.reasonCode}); skipping resolution until it becomes eligible.`;
+  // Strict paths cannot tolerate resolution of unrelated refs: an explicit
+  // auth.order that omits this profile excludes it, so it is never collected.
+  // Degrade-capable paths (Gateway) keep wide collection and tolerate failures.
+  if (
+    active &&
+    params.context.allowOwnerIsolation !== true &&
+    params.providerAuthOrder.hasExplicitOrder &&
+    !params.providerAuthOrder.profileIds.has(params.profileId) &&
+    !isConfigBoundProfile
+  ) {
+    active = false;
+    inactiveReason = "Excluded by auth.order for this provider.";
+  }
   collectAuthStoreSecretInputAssignment({
     value: ref,
     path: `${params.agentDir}.auth-profiles.${params.profileId}.${field}`,
     expected: "string",
     defaults: params.defaults,
     context: params.context,
-    active: eligibility.eligible,
-    inactiveReason: `auth profile is not eligible (${eligibility.reasonCode}); skipping resolution until it becomes eligible.`,
+    active,
+    inactiveReason,
     owner: {
       ownerKind: "account",
       ownerId: resolveAuthProfileSecretOwnerId(params),
@@ -138,6 +178,35 @@ export function collectAuthStoreAssignments(params: {
       ? { metadataSnapshot: params.context.manifestRegistry }
       : {}),
   };
+  const providerAuthOrderCache = new Map<string, ProviderAuthOrderInfo>();
+  const resolveProviderAuthOrder = (provider: string): ProviderAuthOrderInfo => {
+    const providerKey = normalizeProviderId(provider);
+    const providerAuthKey = resolveProviderIdForAuth(provider, {
+      config: params.context.sourceConfig,
+      ...authAliasLookupParams,
+    });
+    const cached = providerAuthOrderCache.get(providerAuthKey);
+    if (cached) {
+      return cached;
+    }
+    const resolution = resolveExplicitAuthOrderSelection({
+      storeOrder: params.store.order,
+      configuredOrder: params.context.sourceConfig.auth?.order,
+      providerKey,
+      providerAuthKey,
+    });
+    const hasExplicitOrder = resolution.order !== undefined;
+    const baseIds = resolution.order ?? [];
+    const profileIds = new Set(
+      prependAuthProfilePin(
+        { profileIds: baseIds, hasExplicitOrder },
+        params.context.pinnedProfileId,
+      ).profileIds,
+    );
+    const entry: ProviderAuthOrderInfo = { hasExplicitOrder, profileIds };
+    providerAuthOrderCache.set(providerAuthKey, entry);
+    return entry;
+  };
   for (const [profileId, profile] of Object.entries(params.store.profiles)) {
     if (profile.type === "api_key" || profile.type === "token") {
       collectStaticProfileAssignment({
@@ -148,6 +217,7 @@ export function collectAuthStoreAssignments(params: {
         defaults,
         authAliasLookupParams,
         context: params.context,
+        providerAuthOrder: resolveProviderAuthOrder(profile.provider),
       });
     }
   }
